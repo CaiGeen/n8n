@@ -42,7 +42,6 @@ import type {
 } from 'n8n-workflow';
 
 import { ActiveExecutions } from '@/active-executions';
-import config from '@/config';
 import { CredentialsHelper } from '@/credentials-helper';
 import { ExecutionRepository } from '@/databases/repositories/execution.repository';
 import type { AiEventMap, AiEventPayload } from '@/events/maps/ai.event-map';
@@ -734,7 +733,7 @@ export async function getWorkflowData(
 
 	let workflowData: IWorkflowBase | null;
 	if (workflowInfo.id !== undefined) {
-		const relations = config.getEnv('workflowTagsDisabled') ? [] : ['tags'];
+		const relations = Container.get(GlobalConfig).tags.disabled ? [] : ['tags'];
 
 		workflowData = await Container.get(WorkflowRepository).get(
 			{ id: workflowInfo.id },
@@ -1151,11 +1150,28 @@ export function getWorkflowHooksWorkerMain(
 
 			const saveSettings = toSaveSettings(this.workflowData.settings);
 
+			const isManualMode = this.mode === 'manual';
+
+			if (isManualMode && !saveSettings.manual && !fullRunData.waitTill) {
+				/**
+				 * When manual executions are not being saved, we only soft-delete
+				 * the execution so that the user can access its binary data
+				 * while building their workflow.
+				 *
+				 * The manual execution and its binary data will be hard-deleted
+				 * on the next pruning cycle after the grace period set by
+				 * `EXECUTIONS_DATA_HARD_DELETE_BUFFER`.
+				 */
+				await Container.get(ExecutionRepository).softDelete(this.executionId);
+
+				return;
+			}
+
 			const shouldNotSave =
 				(executionStatus === 'success' && !saveSettings.success) ||
 				(executionStatus !== 'success' && !saveSettings.error);
 
-			if (shouldNotSave) {
+			if (!isManualMode && shouldNotSave && !fullRunData.waitTill) {
 				await Container.get(ExecutionRepository).hardDelete({
 					workflowId: this.workflowData.id,
 					executionId: this.executionId,
