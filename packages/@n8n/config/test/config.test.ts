@@ -138,6 +138,7 @@ describe('GlobalConfig', () => {
 		externalStorage: {
 			s3: {
 				host: '',
+				protocol: 'https',
 				bucket: {
 					name: '',
 					region: '',
@@ -294,6 +295,9 @@ describe('GlobalConfig', () => {
 		},
 		aiAssistant: {
 			baseUrl: '',
+		},
+		tags: {
+			disabled: false,
 		},
 	};
 
