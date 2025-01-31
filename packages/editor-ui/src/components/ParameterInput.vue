@@ -365,7 +365,7 @@ const getIssues = computed<string[]>(() => {
 			if (Array.isArray(displayValue.value)) {
 				checkValues = checkValues.concat(displayValue.value);
 			} else {
-				checkValues = checkValues.concat(displayValue.value?.toString().split(','));
+				checkValues.push(displayValue.value);
 			}
 		}
 
@@ -837,6 +837,25 @@ function valueChanged(value: NodeParameterValueType | {} | Date) {
 			parameter: props.parameter.name,
 		});
 	}
+	// Track workflow input data mode change
+	const isWorkflowInputParameter =
+		props.parameter.name === 'inputSource' && props.parameter.default === 'workflowInputs';
+	if (isWorkflowInputParameter) {
+		trackWorkflowInputModeEvent(value as string);
+	}
+}
+
+function trackWorkflowInputModeEvent(value: string) {
+	const telemetryValuesMap: Record<string, string> = {
+		workflowInputs: 'fields',
+		jsonExample: 'json',
+		passthrough: 'all',
+	};
+	telemetry.track('User chose input data mode', {
+		option: telemetryValuesMap[value],
+		workflow_id: workflowsStore.workflowId,
+		node_id: node.value?.id,
+	});
 }
 
 async function optionSelected(command: string) {
@@ -889,11 +908,16 @@ async function optionSelected(command: string) {
 		if (isResourceLocatorParameter.value && isResourceLocatorValue(props.modelValue)) {
 			valueChanged({ __rl: true, value, mode: props.modelValue.mode });
 		} else {
-			let newValue = typeof value !== 'undefined' ? value : null;
+			let newValue: NodeParameterValueType | {} = typeof value !== 'undefined' ? value : null;
 
 			if (props.parameter.type === 'string') {
 				// Strip the '=' from the beginning
 				newValue = modelValueString.value ? modelValueString.value.toString().substring(1) : null;
+			} else if (newValue === null) {
+				// Invalid expressions land here
+				if (['number', 'boolean'].includes(props.parameter.type)) {
+					newValue = props.parameter.default;
+				}
 			}
 			valueChanged(newValue);
 		}
@@ -1108,7 +1132,7 @@ onUpdated(async () => {
 				>
 					<div class="ignore-key-press-canvas code-edit-dialog">
 						<CodeNodeEditor
-							v-if="editorType === 'codeNodeEditor'"
+							v-if="editorType === 'codeNodeEditor' && codeEditDialogVisible"
 							:id="parameterId"
 							:mode="codeEditorMode"
 							:model-value="modelValueString"
@@ -1119,7 +1143,7 @@ onUpdated(async () => {
 							@update:model-value="valueChangedDebounced"
 						/>
 						<HtmlEditor
-							v-else-if="editorType === 'htmlEditor' && !codeEditDialogVisible"
+							v-else-if="editorType === 'htmlEditor' && codeEditDialogVisible"
 							:model-value="modelValueString"
 							:is-read-only="isReadOnly"
 							:rows="editorRows"
@@ -1129,7 +1153,7 @@ onUpdated(async () => {
 							@update:model-value="valueChangedDebounced"
 						/>
 						<SqlEditor
-							v-else-if="editorType === 'sqlEditor' && !codeEditDialogVisible"
+							v-else-if="editorType === 'sqlEditor' && codeEditDialogVisible"
 							:model-value="modelValueString"
 							:dialect="getArgument('sqlDialect')"
 							:is-read-only="isReadOnly"
@@ -1138,7 +1162,7 @@ onUpdated(async () => {
 							@update:model-value="valueChangedDebounced"
 						/>
 						<JsEditor
-							v-else-if="editorType === 'jsEditor' && !codeEditDialogVisible"
+							v-else-if="editorType === 'jsEditor' && codeEditDialogVisible"
 							:model-value="modelValueString"
 							:is-read-only="isReadOnly"
 							:rows="editorRows"
@@ -1148,7 +1172,7 @@ onUpdated(async () => {
 						/>
 
 						<JsonEditor
-							v-else-if="parameter.type === 'json' && !codeEditDialogVisible"
+							v-else-if="parameter.type === 'json' && codeEditDialogVisible"
 							:model-value="modelValueString"
 							:is-read-only="isReadOnly"
 							:rows="editorRows"
@@ -1256,7 +1280,7 @@ onUpdated(async () => {
 				</JsEditor>
 
 				<JsonEditor
-					v-else-if="parameter.type === 'json'"
+					v-else-if="parameter.type === 'json' && !codeEditDialogVisible"
 					:model-value="modelValueString"
 					:is-read-only="isReadOnly"
 					:rows="editorRows"
